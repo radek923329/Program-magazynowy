@@ -1,0 +1,638 @@
+# Biblioteki
+
+from colorama import Fore, Style, init
+
+# Inicjalizacja (wymagana dla Windows)
+
+init(autoreset=True)
+
+from datetime import datetime
+import csv
+import os
+
+# Główna klasa produktu
+
+class Product:
+    def __init__(self,name,price, expiration_date=None):
+        self.name=name
+        self.__price=price                                  #hermetyzacja danych
+        self.expiration_date=expiration_date
+    def get_price(self):
+        return self.__price
+    def set_price(self,price):
+        self.__price=price
+
+    # Metoda pobierająca bazowe informacje produktu
+
+    @staticmethod
+    def get_base_data():
+        name = input("\nPodaj nazwę produktu.\n")
+        price = None
+        while True:
+            try:
+                price = float(input("Podaj cenę zakupu (za sztukę lub kg).\n"))
+                break
+            except ValueError:
+                print(Fore.RED + "\nPodana wartość musi być liczbą.\n"
+                      "Jeśli jest to ułamek, to należy między częścią całkowitą a ułamkową użyć kropki.\n")
+                continue
+        while True:
+            expiration_date = input("Podaj datę ważności w formacie dzień-miesiąc-rok (np. 31012026).\n"
+                                    "Jeśli produkt nie posiada daty ważności to można ją pominąć wciskając "'Enter'".\n")
+            if expiration_date == "":
+                expiration_date = None
+                break
+            elif expiration_date.isdigit() and len(expiration_date) == 8:
+                try:
+                    input_date=datetime.strptime(expiration_date, "%d%m%Y")
+                    today=datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                    if input_date < today:
+                        print(Fore.RED + "\nWprowadzono nieprawidłową datę (nie można wprowadzić daty wstecznej).\n")
+                        continue
+                    else:
+                        break
+                except ValueError:
+                    print(Fore.RED + "\nPodana data jest nieprawidłowa (błędny dzień lub/i miesiąc lub/i rok).\n")
+                    continue
+            else:
+                print(Fore.RED + "\nData musi być podana jako 8 cyfr.\n")
+                continue
+        return name, price, expiration_date
+
+    # Metoda do edycji produktu, pyta tylko o bazowe wartości
+
+    @staticmethod
+    def edit_base_item_question(target_dict, product_name):
+        if product_name in target_dict:
+            print("\nProdukt do edycji.\n")
+            target_dict[product_name].print_product()
+            print("Który parametr edytować?\n"
+                  "1)Nazwa.\n"
+                  "2)Cena zakupu.\n"
+                  "3)Data ważności.")
+            return True
+        else:
+            print(Fore.RED + "\nNie znaleziono produktu.\n")
+            return False
+
+    # Metoda do edycji produktu, edytuje tylko bazowe wartości
+
+    @staticmethod
+    def edit_base_item_answer(target_dict, product_name, value_to_edit):
+        if value_to_edit == 1:
+            new_product_name = input("Podaj nową nazwę.\n")
+            new_key_name = f"{new_product_name} ({target_dict[product_name].expiration_date[:2]}-{target_dict[product_name].expiration_date[2:4]}-{target_dict[product_name].expiration_date[4:]})"
+            item_to_rename = target_dict.pop(product_name)
+            item_to_rename.name = new_product_name
+            target_dict[new_key_name] = item_to_rename
+        elif value_to_edit == 2:
+            while True:
+                try:
+                    new_price = float(input("Podaj nową cenę zakupu.\n"))
+                    target_dict[product_name].set_price(new_price)
+                    break
+                except ValueError:
+                    print(Fore.RED + "\nPodana wartość musi być liczbą.\n"
+                          "Jeśli jest to ułamek, to należy między częścią całkowitą a ułamkową użyć kropki.\n")
+                    continue
+        elif value_to_edit == 3:
+            while True:
+                try:
+                    new_date = input("Podaj datę ważności w formacie dzień-miesiąc-rok (np. 31012026).\n"
+                                    "Jeśli produkt nie posiada daty ważności to można ją pominąć wciskając "'Enter'".\n")
+                    if new_date.isdigit() and len(new_date) == 8:
+                        target_dict[product_name].expiration_date = new_date
+                        new_key_name = f"{target_dict[product_name].name} ({target_dict[product_name].expiration_date[:2]}-{target_dict[product_name].expiration_date[2:4]}-{target_dict[product_name].expiration_date[4:]})"
+                        item_to_rename = target_dict.pop(product_name)
+                        target_dict[new_key_name] = item_to_rename
+                        break
+                    elif new_date == "":
+                        target_dict[product_name].expiration_date = None
+                        break
+                    else:
+                        print(Fore.RED + "\nPodano błędną watość.\n")
+                        continue
+                except ValueError:
+                    print(Fore.RED + "\nPodano błędną watość.\n")
+
+    # Metoda do eksportu danych
+
+    @staticmethod
+    def export_to_csv(target_dict, file_name):
+        if not target_dict:
+            print(Fore.RED + f"\nBrak produktów w tej kategorii. Eksport przerwany.\n")
+            return
+        folder_name="export"
+        if not os.path.exists(folder_name):
+            os.makedirs(folder_name)
+
+        current_date = datetime.now().strftime("%Y-%m-%d_%H-%M")
+
+        files_to_save = [
+            os.path.join(folder_name, f"{file_name}_{current_date}.csv"),
+            os.path.join(folder_name, f"{file_name}_latest.csv")
+        ]
+        try:
+            for f_name in files_to_save:
+                with open(f_name, mode='w', newline='', encoding='utf-8') as file:
+                    writer = csv.writer(file, delimiter=';')
+                    first_item = list(target_dict.values())[0]
+                    headers = ['Nazwa', 'Cena', 'Data waznosci']
+                    if isinstance(first_item, FoodByWeight):
+                        headers.append('Waga (kg)')
+                    elif isinstance(first_item, (FoodInAPackage, IndustrialProduct)):
+                        headers.append('Ilosc (szt)')
+                    if isinstance(first_item, IndustrialProduct):
+                        headers.append('Kolor')
+                    writer.writerow(headers)
+                    for p in target_dict.values():
+                        row = [p.name, p.get_price(), p.expiration_date]
+
+                        if hasattr(p, 'weight'):
+                            row.append(p.weight)
+                        if hasattr(p, 'quantity'):
+                            row.append(p.quantity)
+                        if hasattr(p, 'color'):
+                            row.append(p.color)
+
+                        writer.writerow(row)
+
+            print(Fore.GREEN + f"\nEksport do pliku {file_name} zakonczony sukcesem!\n")
+        except Exception as e:
+            print(Fore.RED + f"\nBłąd podczas eksportu: {e}\n")
+
+    @staticmethod
+    def auto_import_latest(food_bw, food_ip, ind_prod, folder_name="export"):
+        if not os.path.exists(folder_name):
+            return
+
+        # Szukamy wszystkich plików kończących się na _latest.csv
+
+        latest_files = [f for f in os.listdir(folder_name) if f.endswith('_latest.csv')]
+
+        for f_name in latest_files:
+            full_path = os.path.join(folder_name, f_name)
+            try:
+                with open(full_path, mode='r', encoding='utf-8') as file:
+                    reader = csv.reader(file, delimiter=';')
+                    headers = next(reader)  # Pobieramy nagłówek, żeby wiedzieć co jest w kolumnach
+
+                    for row in reader:
+                        if not row: continue  # Pomijamy puste linie
+
+                        name = row[0]
+                        price = float(row[1])
+                        exp_date = row[2] if row[2] != "" else None
+
+                        if exp_date and len(exp_date) == 8:
+                            dict_key = f"{name} ({exp_date[:2]}-{exp_date[2:4]}-{exp_date[4:]})"
+                        else:
+                            dict_key = name
+
+                        # Rozpoznawanie typu na podstawie nagłówków pliku
+                        if 'Waga (kg)' in headers:
+                            food_bw[dict_key] = FoodByWeight(name, price, exp_date, float(row[3]))
+                        elif 'Kolor' in headers:
+                            ind_prod[dict_key] = IndustrialProduct(name, price, exp_date, int(row[3]), row[4])
+                        elif 'Ilosc (szt)' in headers:
+                            food_ip[dict_key] = FoodInAPackage(name, price, exp_date, int(row[3]))
+
+            except Exception as e:
+                print(Fore.RED + f"Błąd podczas wczytywania {f_name}: {e}")
+
+        print(Fore.GREEN + "\nImport plików zakończony.\n")
+    
+    @staticmethod
+    def find_product(food_bw, food_ip, ind_prod):
+        search_name = input("\nPodaj nazwę produktu.\n").strip().lower()
+        matching = []
+        all_dictionaries = [food_bw, food_ip, ind_prod]
+        for d in all_dictionaries:
+            for k in d.keys():
+                if search_name in k.lower():
+                    matching.append(k)
+        if len(matching) > 1:
+            print(Fore.YELLOW + "\nZnaleziono kilka produktów o tej lub zbliżonej nazwie.\n")
+            for x in matching:
+                print(f"-{x}")
+            search_name = input("\nWpisz dokładną nazwę z listy.\n")
+            if search_name in matching:
+                return search_name
+            else:
+                print(Fore.RED + "\nNie znaleziono produktu o podanej nazwie. Zwróć uwagę na wielkość liter oraz ewentualną datę przy nazwie (wpisz ją razem z nawiasami i myślnikami).\n")
+                return None
+        elif len(matching) == 1:
+            return matching[0]
+        else:
+            print(Fore.RED + "\nNie znaleziono produktu o podanej nazwie.\n")
+            return None
+
+# Klasa dziedzicząca z klasy Product
+
+class FoodByWeight(Product):
+    def __init__(self,name,price, expiration_date=None, weight=0):
+        super().__init__(name, price, expiration_date)
+        self.weight=weight
+
+    def print_product(self):
+        date = self.expiration_date
+        if date and len(date) == 8:
+            formatted_date = f"{date[:2]}-{date[2:4]}-{date[4:]}"
+        else:
+            formatted_date = date
+        print(f"Nazwa: {self.name}\n"
+              f"Cena zakupu za kg: {self.get_price()}\n"
+              f"Data ważności: {formatted_date}\n"
+              f"Ilość w kg: {self.weight}\n"
+              )
+
+
+    # Metoda pobierająca specyficzne informacje produktu
+
+    @staticmethod
+    def enter_product_details():
+        name, price, expiration_date = Product.get_base_data()
+        while True:
+            try:
+                weight = float(input("Podaj ilość zakupionego towaru w kg.\n"))
+                break
+            except ValueError:
+                print(Fore.RED + "\nPodana wartość musi być liczbą.\n"
+                      "Jeśli jest to ułamek, to należy między częścią całkowitą a ułamkową użyć kropki.\n")
+        return FoodByWeight(name, price, expiration_date, weight)
+
+    # Metoda do edycji produktu, pyta o specyficzne wartości
+
+    @staticmethod
+    def edit_item_question(target_dict, product_name):
+        if Product.edit_base_item_question(target_dict, product_name):
+            print("4)Ilość w kg.\n")
+            try:
+                choice = int(input("Wybierz cyfrę:\n"))
+                if 1 <= choice <= 4:
+                    return choice
+                else:
+                    print(Fore.RED + "\nWybrano niewłaściwą cyfrę. Proszę wybrać cyfrę z podanego zakresu.\n")
+            except ValueError:
+                print(
+                    Fore.RED + "\nWprowadzono nieprawidłowe dane. Proszę wybrać cyfrę zajdującą się przy opcji do wyboru.\n")
+        return None
+
+    # Metoda do edycji produktu, edytuje specyficzne wartości
+
+    @staticmethod
+    def edit_item_answer(target_dict, product_name, value_to_edit):
+        if value_to_edit <= 3:
+            Product.edit_base_item_answer(target_dict, product_name, value_to_edit)
+        elif value_to_edit == 4:
+            while True:
+                try:
+                    new_weight = float(input("Podaj ilość zakupionego towaru w kg.\n"))
+                    target_dict[product_name].weight = new_weight
+                    break
+                except ValueError:
+                    print(Fore.RED + "\nPodana wartość musi być liczbą.\n"
+                          "Jeśli jest to ułamek, to należy między częścią całkowitą a ułamkową użyć kropki.\n")
+
+    # Metoda do przyjęcia towaru
+
+    def add_stock(self):
+        while True:
+            try:
+                extra=float(input("Ile kg towaru dodać?\n"))
+                self.weight += extra
+                print(Fore.GREEN + f"\nPrzyjęto dostawę. Nowy stan: {self.weight} kg.\n")
+                break
+            except ValueError:
+                print(Fore.RED + "\nPodana wartość musi być liczbą.\n"
+                                 "Jeśli jest to ułamek, to należy między częścią całkowitą a ułamkową użyć kropki.\n")
+
+    # Metoda do wydania towaru
+
+    def reduce_stock(self):
+        while True:
+            try:
+                reduction = float(input("Ile kg towaru wydać?\n"))
+                if reduction > self.weight:
+                    print(Fore.RED + "\nPodana wartość jest większa od stanu magazynowego.\n"
+                          f"Aktualny stan wynosi: {self.weight} kg.\n")
+                    continue
+                self.weight -= reduction
+                print(Fore.GREEN + f"\nWydano towar. Nowy stan: {self.weight} kg.\n")
+                break
+            except ValueError:
+                print(Fore.RED + "\nPodana wartość musi być liczbą.\n"
+                                 "Jeśli jest to ułamek, to należy między częścią całkowitą a ułamkową użyć kropki.\n")
+
+# Klasa dziedzicząca z klasy Product
+
+class FoodInAPackage(Product):
+    def __init__(self,name,price, expiration_date=None, quantity=0):
+        super().__init__(name, price, expiration_date)
+        self.quantity=quantity
+
+    def print_product(self):
+        date=self.expiration_date
+        if date and len(date) == 8:
+            formatted_date = f"{date[:2]}-{date[2:4]}-{date[4:]}"
+        else:
+            formatted_date = date
+        print(f"Nazwa: {self.name}\n"
+              f"Cena zakupu za sztukę: {self.get_price()}\n"
+              f"Data ważności: {formatted_date}\n"
+              f"Ilość w sztukach: {self.quantity}\n"
+              )
+
+    # Metoda do przyjęcia towaru
+
+    def add_stock(self):
+        while True:
+            try:
+                extra = int(input("Ile sztuk towaru dodać?\n"))
+                self.quantity += extra
+                print(Fore.GREEN + f"\nPrzyjęto dostawę. Nowy stan: {self.quantity}.\n")
+                break
+            except ValueError:
+                print(Fore.RED + "\nPodana wartość musi być liczbą całkowitą.\n")
+
+    # Metoda do wydania towaru
+
+    def reduce_stock(self):
+        while True:
+            try:
+                reduction = float(input("Ile sztuk towaru wydać?\n"))
+                if reduction > self.quantity:
+                    print(Fore.RED + "\nPodana wartość jest większa od stanu magazynowego.\n"
+                                     f"Aktualny stan wynosi: {self.quantity} sztuk.\n")
+                    continue
+                self.quantity -= reduction
+                print(Fore.GREEN + f"\nWydano towar. Nowy stan: {self.quantity}.\n")
+                break
+            except ValueError:
+                print(Fore.RED + "\nPodana wartość musi być liczbą całkowitą.\n")
+
+    # Metoda pobierająca specyficzne informacje produktu
+
+    @staticmethod
+    def enter_product_details():
+        name, price, expiration_date = Product.get_base_data()
+        while True:
+            try:
+                quantity = int(input("Podaj ilość zakupionego towaru w sztukach.\n"))
+                break
+            except ValueError:
+                print(Fore.RED + "\nIlość musi być podana jako liczba całkowita.\n")
+        return FoodInAPackage(name, price, expiration_date, quantity)
+
+    # Metoda do edycji produktu, pyta o specyficzne wartości
+
+    @staticmethod
+    def edit_item_question(target_dict, product_name):
+        if Product.edit_base_item_question(target_dict, product_name):
+            print("4)Ilość w sztukach.\n")
+            try:
+                choice = int(input("Wybierz cyfrę:\n"))
+                if 1 <= choice <= 4:
+                    return choice
+                else:
+                    print(Fore.RED + "\nWybrano niewłaściwą cyfrę. Proszę wybrać cyfrę z podanego zakresu.\n")
+            except ValueError:
+                print(
+                    Fore.RED + "\nWprowadzono nieprawidłowe dane. Proszę wybrać cyfrę zajdującą się przy opcji do wyboru.\n")
+        return None
+
+    # Metoda do edycji produktu, edytuje specyficzne wartości
+
+    @staticmethod
+    def edit_item_answer(target_dict, product_name, value_to_edit):
+        if value_to_edit <= 3:
+            Product.edit_base_item_answer(target_dict, product_name, value_to_edit)
+        elif value_to_edit == 4:
+            while True:
+                try:
+                    new_quantity = int(input("Podaj ilość zakupionego towaru w sztukach.\n"))
+                    target_dict[product_name].quantity = new_quantity
+                    break
+                except ValueError:
+                    print(Fore.RED + "\nIlość musi być podana jako liczba całkowita.\n")
+
+# Klasa dziedzicząca z klasy Product
+
+class IndustrialProduct(Product):
+    def __init__(self,name,price, expiration_date=None, quantity=0, color=None):
+        super().__init__(name, price, expiration_date)
+        self.quantity=quantity
+        self.color=color
+
+    # Przypisanie istniejących już metod z klasy FoodInAPackage
+
+    add_stock = FoodInAPackage.add_stock
+    reduce_stock = FoodInAPackage.reduce_stock
+
+    def print_product(self):
+        date=self.expiration_date
+        if date and len(date) == 8:
+            formatted_date = f"{date[:2]}-{date[2:4]}-{date[4:]}"
+        else:
+            formatted_date = date
+        print(f"Nazwa: {self.name}\n"
+              f"Cena zakupu za sztukę: {self.get_price()}\n"
+              f"Data ważności: {formatted_date}\n"
+              f"Ilość w sztukach: {self.quantity}\n"
+              f"Kolor: {self.color}\n")
+
+    # Metoda pobierająca specyficzne informacje produktu
+
+    @staticmethod
+    def enter_product_details():
+        name, price, expiration_date = Product.get_base_data()
+        while True:
+            try:
+                quantity = int(input("Podaj ilość zakupionego towaru w sztukach.\n"))
+                break
+            except ValueError:
+                print(Fore.RED + "\nIlość musi być podana jako liczba całkowita.\n")
+        color = input("Podaj kolor.\n")
+        return IndustrialProduct(name, price, expiration_date, quantity, color)
+
+    # Metoda do edycji produktu, pyta o specyficzne wartości
+
+    @staticmethod
+    def edit_item_question(target_dict, product_name):
+        if Product.edit_base_item_question(target_dict, product_name):
+            print("4)Ilość w sztukach.\n"
+                  "5)Kolor.\n")
+            try:
+                choice = int(input("Wybierz cyfrę:\n"))
+                if 1 <= choice <= 5:
+                    return choice
+                else:
+                    print(Fore.RED + "\nWybrano niewłaściwą cyfrę. Proszę wybrać cyfrę z podanego zakresu.\n")
+            except ValueError:
+                print(Fore.RED + "\nWprowadzono nieprawidłowe dane. Proszę wybrać cyfrę zajdującą się przy opcji do wyboru.\n")
+        return None
+
+    # Metoda do edycji produktu, edytuje specyficzne wartości
+
+    @staticmethod
+    def edit_item_answer(target_dict, product_name, value_to_edit):
+        if value_to_edit <= 3:
+            Product.edit_base_item_answer(target_dict, product_name, value_to_edit)
+        elif value_to_edit == 4:
+            while True:
+                try:
+                    new_quantity = int(input("Podaj ilość zakupionego towaru w sztukach.\n"))
+                    target_dict[product_name].quantity = new_quantity
+                    break
+                except ValueError:
+                    print(Fore.RED + "\nIlość musi być podana jako liczba całkowita.\n")
+        elif value_to_edit == 5:
+            new_color = input("Podaj kolor.\n")
+            target_dict[product_name].color = new_color
+
+# Słowniki zapisujące produkty
+
+food_by_weight={}
+food_in_a_package={}
+industrial_product={}
+
+# Menu
+
+while True:
+    try:
+        print(Style.BRIGHT + Fore.YELLOW + "-----PROGRAM MAGAZYNOWY-----\n")
+        print(
+            "1)Dodaj produkt.\n"
+            "2)Usuń produkt.\n"
+            "3)Edytuj produkt.\n"
+            "4)Wyświetl wszystkie produkty.\n"
+            "5)Przyjmij dostawę.\n"
+            "6)Wydanie towaru.\n"
+            "7)Eksport danych.\n"
+            "8)Import danych.\n"
+            "9)Znajdź produkt.\n"
+            "0)Wyjdź."
+        )
+        choice1=int(input())
+        if choice1==1:
+            choice2=int(input(
+                "\n1)Produkt spożywczy na wagę.\n"
+                "2)Produkt spożywczy na sztuki.\n"
+                "3)Produkt przemysłowy.\n"
+            ))
+            if choice2==1:
+                new_item=FoodByWeight.enter_product_details()
+                if new_item.expiration_date:
+                    key=f"{new_item.name} ({new_item.expiration_date[:2]}-{new_item.expiration_date[2:4]}-{new_item.expiration_date[4:]})"
+                else:
+                    key=new_item.name
+                food_by_weight[key]=new_item
+            elif choice2==2:
+                new_item=FoodInAPackage.enter_product_details()
+                if new_item.expiration_date:
+                    key=f"{new_item.name} ({new_item.expiration_date[:2]}-{new_item.expiration_date[2:4]}-{new_item.expiration_date[4:]})"
+                else:
+                    key=new_item.name
+                food_in_a_package[key]=new_item
+            elif choice2==3:
+                new_item=IndustrialProduct.enter_product_details()
+                if new_item.expiration_date:
+                    key=f"{new_item.name} ({new_item.expiration_date[:2]}-{new_item.expiration_date[2:4]}-{new_item.expiration_date[4:]})"
+                else:
+                    key=new_item.name
+                industrial_product[key]=new_item
+            else:
+                print(Fore.RED + "\nNieprawidłowa wartość. Proszę wybrać opcję 1-3.\n")
+        elif choice1==2:
+            product_to_remove=Product.find_product(food_by_weight, food_in_a_package, industrial_product)
+            remove_food_by_weight=food_by_weight.pop(product_to_remove,None)
+            remove_food_in_a_package=food_in_a_package.pop(product_to_remove,None)
+            remove_industrial_product=industrial_product.pop(product_to_remove,None)
+            if remove_food_by_weight or remove_food_in_a_package or remove_industrial_product:
+                print(Fore.GREEN + f"\nProdukt {product_to_remove} został usunięty.\n")
+        elif choice1 == 3:
+            product_to_edit=Product.find_product(food_by_weight, food_in_a_package, industrial_product)
+            if product_to_edit in food_by_weight:
+                select_value=FoodByWeight.edit_item_question(food_by_weight, product_to_edit)
+                if select_value:
+                    FoodByWeight.edit_item_answer(food_by_weight, product_to_edit, select_value)
+            elif product_to_edit in food_in_a_package:
+                select_value=FoodInAPackage.edit_item_question(food_in_a_package, product_to_edit)
+                if select_value:
+                    FoodInAPackage.edit_item_answer(food_in_a_package, product_to_edit, select_value)
+            elif product_to_edit in industrial_product:
+                select_value=IndustrialProduct.edit_item_question(industrial_product, product_to_edit)
+                if select_value:
+                    IndustrialProduct.edit_item_answer(industrial_product, product_to_edit, select_value)
+        elif choice1==4:
+            print(Style.BRIGHT + "\n-----AKTUALNY STAN MAGAZYNU-----\n")
+            print(Style.BRIGHT + "PRODUKTY SPOŻYWCZE NA WAGĘ:\n")
+            if not food_by_weight:
+                print(Fore.RED + "Brak produktów spożywczych na wagę.\n")
+            else:
+                for item in food_by_weight.values():
+                    item.print_product()
+            print(Style.BRIGHT + "PRODUKTY SPOŻYWCZE NA SZTUKI:\n")
+            if not food_in_a_package:
+                print(Fore.RED + "Brak produktów spożywczych na sztuki.\n")
+            else:
+                for item in food_in_a_package.values():
+                    item.print_product()
+            print(Style.BRIGHT + "PRODUKTY PRZEMYSŁOWE:\n")
+            if not industrial_product:
+                print(Fore.RED + "Brak produktów przemysłowych.\n")
+            else:
+                for item in (industrial_product.values()):
+                    item.print_product()
+        elif choice1==5:
+            name_to_find=Product.find_product(food_by_weight, food_in_a_package, industrial_product)
+            found_item=None
+            if name_to_find in food_by_weight:
+                found_item = food_by_weight[name_to_find]
+            elif name_to_find in food_in_a_package:
+                found_item = food_in_a_package[name_to_find]
+            elif name_to_find in industrial_product:
+                found_item = industrial_product[name_to_find]
+            if found_item:
+                found_item.add_stock()
+            else:
+                print(Fore.RED + "\nNie znaleziono produktu o takiej nazwie.\n")
+        elif choice1==6:
+            name_to_find=Product.find_product(food_by_weight, food_in_a_package, industrial_product)
+            found_item = None
+            if name_to_find in food_by_weight:
+                found_item = food_by_weight[name_to_find]
+            elif name_to_find in food_in_a_package:
+                found_item = food_in_a_package[name_to_find]
+            elif name_to_find in industrial_product:
+                found_item = industrial_product[name_to_find]
+            if found_item:
+                found_item.reduce_stock()
+            else:
+                print(Fore.RED + "\nNie znaleziono produktu o takiej nazwie.\n")
+        elif choice1==7:
+            print("\nEksport danych.")
+            Product.export_to_csv(food_by_weight, "produkty_na_wage")
+            Product.export_to_csv(food_in_a_package, "produkty_na_sztuki")
+            Product.export_to_csv(industrial_product, "produkty_przemyslowe")
+        elif choice1==8:
+            print("\nImport danych.")
+            Product.auto_import_latest(food_by_weight, food_in_a_package, industrial_product)
+        elif choice1==9:
+            name_to_find = Product.find_product(food_by_weight, food_in_a_package, industrial_product)
+            found_item = None
+            if name_to_find in food_by_weight:
+                found_item = food_by_weight[name_to_find]
+            elif name_to_find in food_in_a_package:
+                found_item = food_in_a_package[name_to_find]
+            elif name_to_find in industrial_product:
+                found_item = industrial_product[name_to_find]
+            if found_item:
+                print("\nSZUKANY PRODUKT:\n")
+                found_item.print_product()
+            else:
+                print(Fore.RED + "\nNie znaleziono produktu o takiej nazwie.\n")
+        elif choice1==0:
+            exit()
+    except ValueError:
+        continue
